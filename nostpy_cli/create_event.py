@@ -5,7 +5,6 @@ import secp256k1
 import time
 import websockets
 
-
 class Event:
     """
     A class that manages cryptographic events, including their signing, verification, creation, and sending.
@@ -124,26 +123,18 @@ class Event:
         for relay in self.relays:
             try:
                 async with websockets.connect(relay) as ws:
-                    query_ws = json.dumps(("REQ", "5326483051590112", query_dict))
+                    subscription_id = "5326483051590112"
+                    query_ws = json.dumps(("REQ", subscription_id , query_dict))
                     await ws.send(query_ws)
                     print(f"Query sent to relay {relay}: {query_ws}")
-
-                    responses_received = 0
-                    start_time = time.time()
-                    response_limit = query_dict.get("limit", 3)
-
-                    while (
-                        responses_received < response_limit
-                        and (time.time() - start_time) < timeout
-                    ):
-                        try:
-                            response = await asyncio.wait_for(ws.recv(), timeout=1)
+                    async with asyncio.timeout(timeout):
+                        while True:
+                            response = await ws.recv()
+                            if json.loads(response) == ["EOSE", subscription_id]:
+                                break
                             self.print_color(f"Response from {relay}: {response}", "32")
-                            responses_received += 1
-                        except asyncio.TimeoutError:
-                            self.print_color(
-                                "No response within 1 second, continuing...", "31"
-                            )
-                            break
+
+            except asyncio.TimeoutError:
+                self.print_color(f"Waited for responses for {timeout} seconds, aborting...", "31")
             except Exception as exc:
-                self.print_color(f"Exception is {exc}, error querying {relay}", "31")
+                self.print_color(f"Exception is {str(exc)}, error querying {relay}", "31")
